@@ -1,52 +1,54 @@
-package etcdwatcher
+package etcdproxy
 
 import (
+	"context"
 	"errors"
 
 	log "github.com/Golang-Tools/loggerhelper"
-	// "gopkg.in/confluentinc/confluent-kafka-go.v1/kafka"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 //ErrProxyAllreadySettedClient 代理已经设置过redis客户端对象
 var ErrProxyAllreadySettedClient = errors.New("代理不能重复设置客户端对象")
 
-//Callback redis操作的回调函数
-type Callback func(cli *kafka.Consumer) error
+//ErrProxyNotYetSettedClient 代理还未设置客户端对象
+var ErrProxyNotYetSettedClient = errors.New("代理还未设置客户端对象")
 
-//ConsumerProxy redis客户端的代理
-type ConsumerProxy struct {
-	*kafka.Consumer
+//Callback redis操作的回调函数
+type Callback func(cli *clientv3.Client) error
+
+//EtcdProxyredis客户端的代理
+type EtcdProxy struct {
+	*clientv3.Client
+	Opt              Options
 	parallelcallback bool
 	callBacks        []Callback
 }
 
 // New 创建一个新的数据库客户端代理
-func New() *ConsumerProxy {
-	proxy := new(ConsumerProxy)
+func New() *EtcdProxy {
+	proxy := new(EtcdProxy)
+	defaultopt := Options{}
+	proxy.Opt = defaultopt
 	return proxy
 }
 
 // IsOk 检查代理是否已经可用
-func (proxy *ConsumerProxy) IsOk() bool {
-	if proxy.Consumer == nil {
-		return false
-	}
-	return true
+func (proxy *EtcdProxy) IsOk() bool {
+	return proxy.Client != nil
 }
 
 //SetConnect 设置连接的客户端
 //@params cli UniversalClient 满足redis.UniversalClient接口的对象的指针
-func (proxy *ConsumerProxy) SetConnect(cli *kafka.Consumer) error {
+func (proxy *EtcdProxy) SetConnect(cli *clientv3.Client) error {
 	if proxy.IsOk() {
 		return ErrProxyAllreadySettedClient
 	}
-
-	proxy.Consumer = cli
+	proxy.Client = cli
 	if proxy.parallelcallback {
 		for _, cb := range proxy.callBacks {
 			go func(cb Callback) {
-				err := cb(proxy.Consumer)
+				err := cb(proxy.Client)
 				if err != nil {
 					log.Error("regist callback get error", log.Dict{"err": err})
 				} else {
@@ -56,7 +58,7 @@ func (proxy *ConsumerProxy) SetConnect(cli *kafka.Consumer) error {
 		}
 	} else {
 		for _, cb := range proxy.callBacks {
-			err := cb(proxy.Consumer)
+			err := cb(proxy.Client)
 			if err != nil {
 				log.Error("regist callback get error", log.Dict{"err": err})
 			} else {
@@ -68,19 +70,25 @@ func (proxy *ConsumerProxy) SetConnect(cli *kafka.Consumer) error {
 }
 
 //InitFromOptions 从配置条件初始化代理对象
-func (proxy *ConsumerProxy) InitFromOptions(options *kafka.ConfigMap) error {
-	cli, err := kafka.NewConsumer(options)
+func (proxy *EtcdProxy) InitFromOptions(options *clientv3.Config, opts ...Option) error {
+	cli, err := clientv3.New(*options)
 	if err != nil {
 		return err
+	}
+	for _, opt := range opts {
+		opt.Apply(&proxy.Opt)
 	}
 	return proxy.SetConnect(cli)
 }
 
 //InitFromOptionsParallelCallback 从配置条件初始化代理对象,并行执行回调函数
-func (proxy *ConsumerProxy) InitFromOptionsParallelCallback(options *kafka.ConfigMap) error {
-	cli, err := kafka.NewConsumer(options)
+func (proxy *EtcdProxy) InitFromOptionsParallelCallback(options *clientv3.Config, opts ...Option) error {
+	cli, err := clientv3.New(*options)
 	if err != nil {
 		return err
+	}
+	for _, opt := range opts {
+		opt.Apply(&proxy.Opt)
 	}
 	proxy.parallelcallback = true
 	return proxy.SetConnect(cli)
@@ -88,7 +96,7 @@ func (proxy *ConsumerProxy) InitFromOptionsParallelCallback(options *kafka.Confi
 
 // Regist 注册回调函数,在init执行后执行回调函数
 //如果对象已经设置了被代理客户端则无法再注册回调函数
-func (proxy *ConsumerProxy) Regist(cb Callback) error {
+func (proxy *EtcdProxy) Regist(cb Callback) error {
 	if proxy.IsOk() {
 		return ErrProxyAllreadySettedClient
 	}
@@ -96,5 +104,16 @@ func (proxy *ConsumerProxy) Regist(cb Callback) error {
 	return nil
 }
 
-//Proxy 默认的redis代理对象
-var Watcher = New()
+// NewCtx 根据注册的超时时间构造一个上下文
+func (proxy *EtcdProxy) NewCtx() (ctx context.Context, cancel context.CancelFunc) {
+	if proxy.Opt.QueryTimeout > 0 {
+		timeout := proxy.Opt.QueryTimeout
+		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
+	return
+}
+
+//Client 默认的redis代理对象
+var Client = New()

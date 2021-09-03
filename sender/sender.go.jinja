@@ -1,0 +1,45 @@
+package sender
+
+import (
+	"context"
+	"fmt"
+	"time"
+	"{{ app_name }}/etcdproxy"
+
+	log "github.com/Golang-Tools/loggerhelper"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+)
+
+func handdler(i int) error {
+	key := "/test/foo"
+	value := fmt.Sprintf("bar%d", i)
+	ctx, cancel := etcdproxy.Client.NewCtx()
+	defer cancel()
+	resp, err := etcdproxy.Client.Put(ctx, key, value)
+	if err != nil {
+		switch err {
+		case context.Canceled:
+			log.Error("ctx is canceled by another routine", log.Dict{"err": err.Error()})
+		case context.DeadlineExceeded:
+			log.Error("ctx is attached with a deadline is exceeded", log.Dict{"err": err.Error()})
+		case rpctypes.ErrEmptyKey:
+			log.Error("client-side error", log.Dict{"err": err.Error()})
+		default:
+			log.Error("bad cluster endpoints, which are not etcd servers", log.Dict{"err": err.Error()})
+		}
+		return err
+	} else {
+		log.Info("send msg", log.Dict{"value": value, "key": key, "resp": resp})
+		time.Sleep(time.Second)
+		return nil
+	}
+}
+
+func Handdler() {
+	for i := 0; i < 10; i++ {
+		err := handdler(i)
+		if err != nil {
+			break
+		}
+	}
+}
