@@ -24,6 +24,7 @@ type Application struct {
 
 func (app *Application) Main() {
 	log.Init(app.Log_Level, map[string]interface{}{"app_name": app.App_Name, "app_version": app.App_Version})
+	log.Info("get config", log.Dict{"config": app})
 	if app.ETCD_Query_Timeout > 0 {
 		err := etcdproxy.Client.InitFromOptions(&clientv3.Config{
 			Endpoints:   app.ETCD_URLS,
