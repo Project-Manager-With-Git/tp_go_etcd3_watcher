@@ -10,12 +10,22 @@ import (
 )
 
 func main() {
-	root, err := s.New(&s.EntryPointMeta{Name: "{{ app_name }}", Usage: "{{ app_name }}"})
+	root, err := s.NewEntryPoint(s.WithName("{{ app_name }}"), s.WithUsage("{{ app_name }} <subcmd> [--options]"))
 	if err != nil {
 		log.Error("create root node error", log.Dict{"err": err})
 		os.Exit(1)
 	}
-	s.RegistSubNode(root, sender.App)
-	s.RegistSubNode(root, watcher.App)
+	sender, err := s.NewEndPoint(new(sender.Application), s.WithName("sender"), s.WithUsage("{{ app_name }} sender"))
+	if err != nil {
+		log.Error("create sender node error", log.Dict{"err": err})
+		os.Exit(1)
+	}
+	watcher, err := s.NewEndPoint(new(watcher.Application), s.WithName("watcher"), s.WithUsage("{{ app_name }} watcher"))
+	if err != nil {
+		log.Error("create watcher node error", log.Dict{"err": err})
+		os.Exit(1)
+	}
+	sender.SetParent(root)
+	watcher.SetParent(root)
 	root.Parse(os.Args)
 }

@@ -3,7 +3,7 @@ package watcher
 import (
 	"errors"
 
-	log "github.com/Golang-Tools/loggerhelper"
+	"github.com/Golang-Tools/etcdhelper/etcdproxy"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -12,17 +12,17 @@ func Handdler(event *clientv3.Event) error {
 	switch event.Type {
 	case mvccpb.PUT:
 		{
-			log.Info("get put event", log.Dict{"key": string(event.Kv.Key), "value": string(event.Kv.Value)})
+			etcdproxy.Logger.Info("get put event", map[string]any{"key": string(event.Kv.Key), "value": string(event.Kv.Value)})
 			return nil
 		}
 	case mvccpb.DELETE:
 		{
-			log.Info("get delete event", log.Dict{"key": string(event.Kv.Key)})
+			etcdproxy.Logger.Info("get delete event", map[string]any{"key": string(event.Kv.Key)})
 			return nil
 		}
 	default:
 		{
-			log.Error("get unknown event", log.Dict{"event_type": event.Type})
+			etcdproxy.Logger.Error("get unknown event", map[string]any{"event_type": event.Type})
 			return errors.New("get unknown event")
 		}
 	}

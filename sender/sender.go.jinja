@@ -4,32 +4,32 @@ import (
 	"context"
 	"fmt"
 	"time"
-	"{{ app_name }}/etcdproxy"
 
-	log "github.com/Golang-Tools/loggerhelper"
+	"github.com/Golang-Tools/etcdhelper/etcdproxy"
+
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 )
 
 func handdler(i int) error {
 	key := "/test/foo"
 	value := fmt.Sprintf("bar%d", i)
-	ctx, cancel := etcdproxy.Client.NewCtx()
+	ctx, cancel := etcdproxy.Default.NewCtx()
 	defer cancel()
-	resp, err := etcdproxy.Client.Put(ctx, key, value)
+	resp, err := etcdproxy.Default.Put(ctx, key, value)
 	if err != nil {
 		switch err {
 		case context.Canceled:
-			log.Error("ctx is canceled by another routine", log.Dict{"err": err.Error()})
+			etcdproxy.Logger.Error("ctx is canceled by another routine", map[string]any{"err": err.Error()})
 		case context.DeadlineExceeded:
-			log.Error("ctx is attached with a deadline is exceeded", log.Dict{"err": err.Error()})
+			etcdproxy.Logger.Error("ctx is attached with a deadline is exceeded", map[string]any{"err": err.Error()})
 		case rpctypes.ErrEmptyKey:
-			log.Error("client-side error", log.Dict{"err": err.Error()})
+			etcdproxy.Logger.Error("client-side error", map[string]any{"err": err.Error()})
 		default:
-			log.Error("bad cluster endpoints, which are not etcd servers", log.Dict{"err": err.Error()})
+			etcdproxy.Logger.Error("bad cluster endpoints, which are not etcd servers", map[string]any{"err": err.Error()})
 		}
 		return err
 	} else {
-		log.Info("send msg", log.Dict{"value": value, "key": key, "resp": resp})
+		etcdproxy.Logger.Info("send msg", map[string]any{"value": value, "key": key, "resp": resp})
 		time.Sleep(time.Second)
 		return nil
 	}

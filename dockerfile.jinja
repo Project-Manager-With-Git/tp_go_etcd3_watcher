@@ -1,5 +1,5 @@
 # 构建可执行文件
-FROM golang:1.16.3 as build_bin
+FROM golang:1.18 as build_bin
 ENV GO111MODULE=on
 ENV GOPROXY=https://goproxy.io
 # 启用cgo
@@ -13,9 +13,9 @@ RUN apt update -y && apt install -y --no-install-recommends librdkafka1 && rm -r
 # 复制源码
 COPY sender /code/sender
 COPY watcher /code/watcher
-COPY {{ app_name }}.go /code/{{ app_name }}.go
+COPY main.go /code/main.go
 # 编译可执行文件
-RUN go build -ldflags "-s -w" -o {{ app_name }}-go {{ app_name }}.go
+RUN go build -ldflags "-s -w" -o {{ app_name }}-go main.go
 
 # 压缩可执行文件
 FROM alpine:3.11 as upx

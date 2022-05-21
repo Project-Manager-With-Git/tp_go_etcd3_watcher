@@ -2,56 +2,39 @@ package watcher
 
 import (
 	"context"
-	"os"
-	"time"
-	"{{ app_name }}/etcdproxy"
 
-	log "github.com/Golang-Tools/loggerhelper"
-	s "github.com/Golang-Tools/schema-entry-go"
+	"github.com/Golang-Tools/etcdhelper/etcdproxy"
+	log "github.com/Golang-Tools/loggerhelper/v2"
+	"github.com/Golang-Tools/optparams"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type Application struct {
-	App_Version        string   `json:"app_version" jsonschema:"required,title=v,description=应用版本"`
-	App_Name           string   `json:"app_name" jsonschema:"required,title=n,description=应用名"`
-	Log_Level          string   `json:"log_level" jsonschema:"required,title=l,description=log等级,enum=TRACE,enum=DEBUG,enum=INFO,enum=WARN,enum=ERROR"`
-	ETCD_URLS          []string `json:"etcd_urls" jsonschema:"required,title=u,description=etcd集群地址"`
-	ETCD_Dial_Timeout  int      `json:"etcd_dial_timeout" jsonschema:"required,title=d,description=etcd的联通超时单位s"`
-	ETCD_Query_Timeout int      `json:"etcd_query_timeout" jsonschema:"title=q,description=etcd的请求超时单位ms"`
-	Watch_ETCD_Key     string   `json:"watch_etcd_key" jsonschema:"title=g,description=监听的etcd的键"`
-	Watch_ETCD_Prefix  bool     `json:"watch_etcd_prefix" jsonschema:"title=p,description=监听的键是一个前缀而不是以一个完整的键"`
+	App_Version        string `json:"app_version" jsonschema:"required,title=v,description=应用版本,default=0.0.1"`
+	App_Name           string `json:"app_name" jsonschema:"required,title=n,description=应用名,default={{ app_name }}_watcher"`
+	Log_Level          string `json:"log_level" jsonschema:"required,title=l,description=log等级,enum=TRACE,enum=DEBUG,enum=INFO,enum=WARN,enum=ERROR,default=DEBUG"`
+	ETCD_Endpoints     string `json:"etcd_endpoints" jsonschema:"required,title=e,description=etcd集群地址"`
+	ETCD_Dial_Timeout  int    `json:"etcd_dial_timeout" jsonschema:"required,title=d,description=etcd的联通超时,default=300"`
+	ETCD_Query_Timeout int    `json:"etcd_query_timeout" jsonschema:"title=q,description=etcd的请求超时"`
+	Watch_ETCD_Key     string `json:"watch_etcd_key" jsonschema:"title=g,description=监听的etcd的键"`
+	Watch_ETCD_Prefix  bool   `json:"watch_etcd_prefix" jsonschema:"title=p,description=监听的键是一个前缀而不是以一个完整的键"`
 }
 
 func (app *Application) Main() {
-	log.Init(app.Log_Level, map[string]interface{}{"app_name": app.App_Name, "app_version": app.App_Version})
+	log.Set(log.WithLevel(app.Log_Level), log.AddExtField("app_name", app.App_Name), log.AddExtField("app_version", app.App_Version))
 	log.Info("get config", log.Dict{"config": app})
+	opts := []optparams.Option[etcdproxy.Options]{etcdproxy.UseEtcdOpts(etcdproxy.WithDialTimeout(app.ETCD_Dial_Timeout))}
 	if app.ETCD_Query_Timeout > 0 {
-		err := etcdproxy.Client.InitFromOptions(&clientv3.Config{
-			Endpoints:   app.ETCD_URLS,
-			DialTimeout: time.Duration(app.ETCD_Dial_Timeout) * time.Second,
-		},
-			etcdproxy.WithQueryTimeout(time.Duration(app.ETCD_Query_Timeout)*time.Millisecond),
-		)
-		if err != nil {
-			log.Error("Failed to init etcd", log.Dict{"error": err})
-			os.Exit(1)
-		}
-	} else {
-		err := etcdproxy.Client.InitFromOptions(&clientv3.Config{
-			Endpoints:   app.ETCD_URLS,
-			DialTimeout: time.Duration(app.ETCD_Dial_Timeout) * time.Second,
-		})
-		if err != nil {
-			log.Error("Failed to init etcd", log.Dict{"error": err})
-			os.Exit(1)
-		}
+		opts = append(opts, etcdproxy.WithQueryTimeout(app.ETCD_Query_Timeout))
 	}
-	defer etcdproxy.Client.Close()
+	etcdproxy.Default.Init(app.ETCD_Endpoints, opts...)
+	defer etcdproxy.Default.Close()
+
 	var rch clientv3.WatchChan
 	if app.Watch_ETCD_Prefix {
-		rch = etcdproxy.Client.Watch(context.Background(), app.Watch_ETCD_Key, clientv3.WithPrefix())
+		rch = etcdproxy.Default.Watch(context.Background(), app.Watch_ETCD_Key, clientv3.WithPrefix())
 	} else {
-		rch = etcdproxy.Client.Watch(context.Background(), app.Watch_ETCD_Key)
+		rch = etcdproxy.Default.Watch(context.Background(), app.Watch_ETCD_Key)
 	}
 	for wresp := range rch {
 		for _, ev := range wresp.Events {
@@ -62,10 +45,3 @@ func (app *Application) Main() {
 		}
 	}
 }
-
-var App, _ = s.New(&s.EntryPointMeta{Name: "watcher", Usage: "{{ app_name }} watcher"}, &Application{
-	App_Version:       "0.0.0",
-	App_Name:          "{{ app_name }}_watcher",
-	Log_Level:         "DEBUG",
-	ETCD_Dial_Timeout: 5,
-})
